@@ -1,16 +1,16 @@
 #[derive(Debug)]
 pub struct Options {
-    /// toggles autoskip. A single '*' replaces NUL-lines.
+    /// TODO toggles autoskip. A single '*' replaces NUL-lines.
     pub autoskip: bool,
     /// Switches to binary dump instead of hex dump.
     pub bits: bool,
     /// Specifies the number of columns in the hex dump.
     pub cols: usize,
-    /// Capitalize variable names in C include file style, when using -i
+    /// TODO Capitalize variable names in C include file style, when using -i
     pub capitalize: bool,
-    /// Change the character encoding in the RHS from ASCII to EBCDIC.
+    /// DROPPED Change the character encoding in the RHS from ASCII to EBCDIC.
     pub is_ebcdic: bool,
-    /// Switch to little-endian hex dump.
+    /// TODO Switch to little-endian hex dump.
     pub is_little_endian: bool,
     /// the size of a group of bytes in the hexdump. Default is 2.
     pub group_size: usize,
@@ -26,15 +26,17 @@ pub struct Options {
     pub offset: usize,
     /// Output in PostScript continuous hex dump style. Also known as plain hex dump style.
     pub postscript_style: bool,
-    /// Convert hex dump to binary.
+    /// TODO Convert hex dump to binary.
     pub revert: bool,
-    /// Start at <seek> bytes.
+    /// TODO Start at <seek> bytes.
     pub seek: i32,
     /// Use upper-case hex letters.
     pub uppercase: bool,
     /// Display version number and exit.
     pub display_version: bool,
+    //// Input file to read from.
     pub infile: Option<String>,
+    /// Output file to write to.
     pub outfile: Option<String>,
 }
 
@@ -78,7 +80,6 @@ impl Options {
                 .and_then(|next_arg| next_arg.parse::<T>().ok())
         }
 
-        // first parse options
         while arg < arguments.len() {
             let argument = arguments.get(arg).expect("this cannot fail");
             if argument.starts_with("-") {
@@ -153,7 +154,7 @@ impl Options {
                     },
                     "-u" => options.uppercase = true,
                     "-v" => options.display_version = true,
-                    _ => break,
+                    option => return Err(format!("{} is not an option.", option)),
                 }
             } else {
                 break;

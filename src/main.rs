@@ -39,7 +39,7 @@ fn main() {
     };
 
     let contents = match fs::read_to_string(&filename) {
-        Ok(val) => val,
+        Ok(val) => val[0..options.len_octets.unwrap_or(val.len())].to_owned(),
         Err(_) => {
             println!("file \"{}\" not found.", filename);
             return;
@@ -52,13 +52,60 @@ fn main() {
     let mut line_buf = String::new();
 
     let total_length = options.len_octets.unwrap_or(contents.len());
+    let columns = if options.postscript_style {
+        30
+    } else if options.include_format {
+        12
+    } else {
+        options.cols
+    };
 
-    for row in 0..(total_length / options.cols + 1) {
+    let mut output_handle: Box<dyn std::io::Write> = match options.outfile {
+        None => Box::new(std::io::stdout()),
+        Some(filename) => {
+            Box::new(fs::File::create(filename).expect("Could not create output file."))
+        }
+    };
+
+    if options.include_format {
+        let include_filename = options.include_name.unwrap_or("buffer".into());
+        buffer.push_str(format!("unsigned char {}[] = {{\n", include_filename).as_str());
+
+        for row in 0..(total_length / columns + 1) {
+            // TODO render out in little-endian
+            if row * columns == total_length {
+                continue;
+            }
+
+            buffer.push_str("  ");
+            for byte in contents[row * columns..min(row * columns + columns, total_length)].bytes()
+            {
+                buffer.push_str(format!("0x{:x}{:x}, ", byte & 15, byte >> 4 & 15).as_str());
+            }
+            buffer.push('\n');
+        }
+
+        buffer.push_str(
+            format!(
+                "}};\nunsigned int {} = {};",
+                include_filename + "_len",
+                contents.len()
+            )
+            .as_str(),
+        );
+
+        output_handle
+            .write_all(buffer.as_bytes())
+            .expect("Could not write to handle.");
+
+        return;
+    }
+
+    for row in 0..(total_length / columns + 1) {
         line_hexbuf.clear();
         line_buf.clear();
 
-        for (idx, byte) in contents
-            [row * options.cols..min(row * options.cols + options.cols, total_length)]
+        for (idx, byte) in contents[row * columns..min(row * columns + columns, total_length)]
             .bytes()
             .enumerate()
         {
@@ -68,7 +115,7 @@ fn main() {
                 line_buf.push(byte.into())
             }
 
-            if idx % options.group_size == 0 && idx > 0 {
+            if !options.postscript_style && idx % options.group_size == 0 && idx > 0 {
                 line_hexbuf.push(' ')
             }
 
@@ -80,28 +127,30 @@ fn main() {
             }
 
             if options.bits {
-                line_hexbuf.push_str(format!("{:b}", outbyte & 15).as_str());
-                line_hexbuf.push_str(format!("{:b}", outbyte >> 4 & 15).as_str());
+                line_hexbuf.push_str(format!("{:b}{:b}", outbyte & 15, outbyte >> 4 & 15).as_str());
             } else {
                 if options.uppercase {
-                    line_hexbuf.push_str(format!("{:X}", outbyte & 15).as_str());
-                    line_hexbuf.push_str(format!("{:X}", outbyte >> 4 & 15).as_str());
+                    line_hexbuf
+                        .push_str(format!("{:X}{:X}", outbyte & 15, outbyte >> 4 & 15).as_str());
                 } else {
-                    line_hexbuf.push_str(format!("{:x}", outbyte & 15).as_str());
-                    line_hexbuf.push_str(format!("{:x}", outbyte >> 4 & 15).as_str());
+                    line_hexbuf
+                        .push_str(format!("{:x}{:x}", outbyte & 15, outbyte >> 4 & 15).as_str());
                 }
             }
         }
 
-        buffer += format!(
-            "{:0>8x}: {: <39}  {}",
-            row * options.cols,
-            line_hexbuf,
-            line_buf
-        )
-        .as_str();
+        if options.postscript_style {
+            // TODO display format needs to be little endian in this case
+            buffer += line_hexbuf.as_str();
+        } else {
+            buffer +=
+                format!("{:0>8x}: {: <39}  {}", row * columns, line_hexbuf, line_buf).as_str();
+        }
+
         buffer.push('\n');
     }
 
-    print!("{}", buffer);
+    output_handle
+        .write_all(buffer.as_bytes())
+        .expect("Could not write to handle.");
 }
