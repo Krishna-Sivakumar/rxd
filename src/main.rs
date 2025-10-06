@@ -38,10 +38,10 @@ fn main() {
         }
     };
 
-    let contents = match fs::read_to_string(&filename) {
+    let contents = match fs::read(&filename) {
         Ok(val) => val[0..options.len_octets.unwrap_or(val.len())].to_owned(),
-        Err(_) => {
-            println!("file \"{}\" not found.", filename);
+        Err(e) => {
+            println!("could not open {}: {}", filename, e.to_string());
             return;
         }
     };
@@ -101,7 +101,9 @@ fn main() {
             }
 
             buffer.push_str("  ");
-            for byte in contents[row * columns..min(row * columns + columns, total_length)].bytes()
+            for byte in contents[row * columns..min(row * columns + columns, total_length)]
+                .as_ref()
+                .into_iter()
             {
                 std::fmt::write(
                     &mut buffer,
@@ -133,13 +135,14 @@ fn main() {
         line_buf.clear();
 
         for (idx, byte) in contents[row * columns..min(row * columns + columns, total_length)]
-            .bytes()
+            .as_ref()
+            .iter()
             .enumerate()
         {
-            if byte.is_ascii_whitespace() && byte != 32 {
+            if !byte.is_ascii_graphic() && *byte != 32 {
                 line_buf.push('.')
             } else {
-                line_buf.push(byte.into())
+                line_buf.push((*byte).into())
             }
 
             if !options.postscript_style && idx % options.group_size == 0 && idx > 0 {
