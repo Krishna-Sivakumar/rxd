@@ -32,21 +32,29 @@ fn main() {
 
     let mut contents: Vec<u8> = Vec::new();
 
-    match options.infile.clone() {
-        Some(filename) => match fs::read(&filename) {
-            Ok(val) => {
-                contents = val[0..options.len_octets.unwrap_or(val.len())].to_owned();
-            }
-            Err(e) => {
-                println!("could not open {}: {}", filename, e.to_string());
+    let mut inhandle: Box<dyn std::io::Read> = match options.infile.clone() {
+        Some(filename) => match fs::File::open(&filename) {
+            Err(err) => {
+                println!("Could not open {}: {}", &filename, err.to_string());
                 return;
             }
+            Ok(handle) => Box::new(handle),
         },
+        None => Box::new(std::io::stdin()),
+    };
+
+    // the size of contents (Vec<u8>) needs to be limited by -len_octets
+    match options.len_octets {
         None => {
-            use std::io::Read;
-            std::io::stdin()
+            inhandle
                 .read_to_end(&mut contents)
-                .expect("Could not read from stdin.");
+                .expect("Could not read from stream.");
+        }
+        Some(len) => {
+            contents.resize_with(len, || 0_u8);
+            inhandle
+                .read_exact(&mut contents)
+                .expect("Could not read from stream.");
         }
     }
 
@@ -55,7 +63,7 @@ fn main() {
     let mut line_hexbuf = String::new();
     let mut line_buf = String::new();
 
-    let total_length = options.len_octets.unwrap_or(contents.len());
+    let total_length = contents.len();
     let columns = if options.postscript_style {
         30
     } else if options.include_format {
@@ -105,7 +113,6 @@ fn main() {
         buffer.push_str(format!("unsigned char {}[] = {{\n", include_filename).as_str());
 
         for row in 0..(total_length / columns + 1) {
-            // TODO render out in little-endian
             if row * columns == total_length {
                 continue;
             }
@@ -165,7 +172,6 @@ fn main() {
         }
 
         if options.postscript_style {
-            // TODO display format needs to be little endian in this case
             buffer += line_hexbuf.as_str();
         } else if line_hexbuf.len() > 0 {
             buffer +=
