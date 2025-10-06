@@ -30,6 +30,7 @@ fn main() {
         return;
     }
 
+    /*
     let filename = match options.infile.clone() {
         Some(filename) => filename,
         None => {
@@ -37,7 +38,31 @@ fn main() {
             return;
         }
     };
+    */
 
+    let filename = options.infile.clone().unwrap_or("stdin".to_owned());
+
+    let mut contents: Vec<u8> = Vec::new();
+
+    match options.infile.clone() {
+        Some(filename) => match fs::read(&filename) {
+            Ok(val) => {
+                contents = val[0..options.len_octets.unwrap_or(val.len())].to_owned();
+            }
+            Err(e) => {
+                println!("could not open {}: {}", filename, e.to_string());
+                return;
+            }
+        },
+        None => {
+            use std::io::Read;
+            std::io::stdin()
+                .read_to_end(&mut contents)
+                .expect("Could not read from stdin.");
+        }
+    }
+
+    /*
     let contents = match fs::read(&filename) {
         Ok(val) => val[0..options.len_octets.unwrap_or(val.len())].to_owned(),
         Err(e) => {
@@ -45,6 +70,7 @@ fn main() {
             return;
         }
     };
+    */
 
     let mut buffer = String::new();
 
