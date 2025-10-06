@@ -98,14 +98,14 @@ impl Options {
                     "-C" | "-capitalize" => options.capitalize = true,
                     "-E" | "-EBCDIC" => options.is_ebcdic = true,
                     "-e" => options.is_little_endian = true,
-                    "-g" | "-groupsize" => match take(&arguments, &arg) {
+                    "-g" | "-groupsize" => match take::<usize>(&arguments, &arg) {
                         None => {
                             return Err(
                                 "-groupsize requires an integer value following it.".to_owned()
                             );
                         }
                         Some(g) => {
-                            options.group_size = std::cmp::max(1, std::cmp::min(16, g));
+                            options.group_size = g.clamp(1, 16); //std::cmp::max(1, std::cmp::min(16, g));
                             arg += 1;
                         }
                     },
