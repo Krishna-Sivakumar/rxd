@@ -10,7 +10,7 @@ const VERSION: &str = "0.1";
 fn main() {
     use argparse::Options;
 
-    let arguments: Vec<String> = env::args().collect();
+    let arguments: Vec<String> = env::args().collect(); //aaaa
     let options = match Options::parse_options(arguments[1..].to_owned()) {
         Ok(opt) => opt,
         Err(err) => {
@@ -29,18 +29,6 @@ fn main() {
         println!("{}", VERSION);
         return;
     }
-
-    /*
-    let filename = match options.infile.clone() {
-        Some(filename) => filename,
-        None => {
-            println!("Expected an input filename.");
-            return;
-        }
-    };
-    */
-
-    let filename = options.infile.clone().unwrap_or("stdin".to_owned());
 
     let mut contents: Vec<u8> = Vec::new();
 
@@ -61,16 +49,6 @@ fn main() {
                 .expect("Could not read from stdin.");
         }
     }
-
-    /*
-    let contents = match fs::read(&filename) {
-        Ok(val) => val[0..options.len_octets.unwrap_or(val.len())].to_owned(),
-        Err(e) => {
-            println!("could not open {}: {}", filename, e.to_string());
-            return;
-        }
-    };
-    */
 
     let mut buffer = String::new();
 
@@ -108,6 +86,12 @@ fn main() {
             .expect("write must succeed.");
     }
 
+    // Swaps nibbles in a byte. Needed as bytes are usually displayed in big-endian order and we
+    // need little endian.
+    fn swap_nibbles(byte: u8) -> u8 {
+        ((byte & 0x0f) << 4) | ((byte & 0xf0) >> 4)
+    }
+
     let formatter = if options.bits {
         to_binary
     } else if options.uppercase {
@@ -131,9 +115,10 @@ fn main() {
                 .as_ref()
                 .into_iter()
             {
+                let outbyte = swap_nibbles(*byte);
                 std::fmt::write(
                     &mut buffer,
-                    format_args!("0x{:x}{:x}, ", byte & 15, byte >> 4 & 15),
+                    format_args!("0x{:x}{:x}, ", outbyte & 15, outbyte >> 4 & 15),
                 )
                 .expect("write must succeed.");
             }
@@ -175,13 +160,14 @@ fn main() {
                 line_hexbuf.push(' ')
             }
 
-            formatter(&mut line_hexbuf, &byte);
+            let outbyte = swap_nibbles(*byte);
+            formatter(&mut line_hexbuf, &outbyte);
         }
 
         if options.postscript_style {
             // TODO display format needs to be little endian in this case
             buffer += line_hexbuf.as_str();
-        } else {
+        } else if line_hexbuf.len() > 0 {
             buffer +=
                 format!("{:0>8x}: {: <39}  {}", row * columns, line_hexbuf, line_buf).as_str();
         }
@@ -190,6 +176,7 @@ fn main() {
     }
 
     output_handle
-        .write_all(buffer.as_bytes())
+        .write_all(buffer.trim().as_bytes())
         .expect("Could not write to handle.");
+    println!(""); // final newline
 }
