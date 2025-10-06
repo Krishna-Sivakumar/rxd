@@ -67,6 +67,29 @@ fn main() {
         }
     };
 
+    fn to_lower_hex(buffer: &mut String, byte: &u8) {
+        std::fmt::write(buffer, format_args!("{:x}{:x}", byte & 15, byte >> 4 & 15))
+            .expect("write must succeed.");
+    }
+
+    fn to_upper_hex(buffer: &mut String, byte: &u8) {
+        std::fmt::write(buffer, format_args!("{:X}{:X}", byte & 15, byte >> 4 & 15))
+            .expect("write must succeed.");
+    }
+
+    fn to_binary(buffer: &mut String, byte: &u8) {
+        std::fmt::write(buffer, format_args!("{:b}{:b}", byte & 15, byte >> 4 & 15))
+            .expect("write must succeed.");
+    }
+
+    let formatter = if options.bits {
+        to_binary
+    } else if options.uppercase {
+        to_upper_hex
+    } else {
+        to_lower_hex
+    };
+
     if options.include_format {
         let include_filename = options.include_name.unwrap_or("buffer".into());
         buffer.push_str(format!("unsigned char {}[] = {{\n", include_filename).as_str());
@@ -80,7 +103,11 @@ fn main() {
             buffer.push_str("  ");
             for byte in contents[row * columns..min(row * columns + columns, total_length)].bytes()
             {
-                buffer.push_str(format!("0x{:x}{:x}, ", byte & 15, byte >> 4 & 15).as_str());
+                std::fmt::write(
+                    &mut buffer,
+                    format_args!("0x{:x}{:x}, ", byte & 15, byte >> 4 & 15),
+                )
+                .expect("write must succeed.");
             }
             buffer.push('\n');
         }
@@ -119,24 +146,7 @@ fn main() {
                 line_hexbuf.push(' ')
             }
 
-            let mut outbyte = byte;
-            if options.is_little_endian {
-                outbyte = outbyte.to_le();
-            } else {
-                outbyte = outbyte.to_be();
-            }
-
-            if options.bits {
-                line_hexbuf.push_str(format!("{:b}{:b}", outbyte & 15, outbyte >> 4 & 15).as_str());
-            } else {
-                if options.uppercase {
-                    line_hexbuf
-                        .push_str(format!("{:X}{:X}", outbyte & 15, outbyte >> 4 & 15).as_str());
-                } else {
-                    line_hexbuf
-                        .push_str(format!("{:x}{:x}", outbyte & 15, outbyte >> 4 & 15).as_str());
-                }
-            }
+            formatter(&mut line_hexbuf, &byte);
         }
 
         if options.postscript_style {
