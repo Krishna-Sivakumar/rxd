@@ -64,13 +64,15 @@ fn main() {
     let mut line_buf = String::new();
 
     let total_length = contents.len();
-    let columns = if options.postscript_style {
-        30
-    } else if options.include_format {
+    let columns = options.cols.unwrap_or(if options.include_format {
         12
+    } else if options.postscript_style {
+        30
+    } else if options.bits {
+        6
     } else {
-        options.cols
-    };
+        16
+    });
 
     let mut output_handle: Box<dyn std::io::Write> = match options.outfile {
         None => Box::new(std::io::stdout()),
@@ -78,6 +80,8 @@ fn main() {
             Box::new(fs::File::create(filename).expect("Could not create output file."))
         }
     };
+
+    // functions to write bytes to the buffer in a particular format follow this line
 
     fn to_lower_hex(buffer: &mut String, byte: &u8) {
         std::fmt::write(buffer, format_args!("{:x}{:x}", byte & 15, byte >> 4 & 15))
@@ -100,6 +104,7 @@ fn main() {
         ((byte & 0x0f) << 4) | ((byte & 0xf0) >> 4)
     }
 
+    // Doing this as branching might be a problem (if dispatch isn't...) and it's easier to manage the code here
     let formatter = if options.bits {
         to_binary
     } else if options.uppercase {
@@ -179,6 +184,14 @@ fn main() {
         }
 
         buffer.push('\n');
+
+        // if size exceeds a page, write it out
+        if buffer.len() >= 4096 {
+            output_handle
+                .write_all(buffer.as_bytes())
+                .expect("Could not write to handle.");
+            buffer.clear();
+        }
     }
 
     output_handle

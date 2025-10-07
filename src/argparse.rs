@@ -5,7 +5,7 @@ pub struct Options {
     /// Switches to binary dump instead of hex dump.
     pub bits: bool,
     /// Specifies the number of columns in the hex dump.
-    pub cols: usize,
+    pub cols: Option<usize>,
     /// TODO Capitalize variable names in C include file style, when using -i
     pub capitalize: bool,
     /// DROPPED Change the character encoding in the RHS from ASCII to EBCDIC.
@@ -45,7 +45,7 @@ impl Options {
         Options {
             autoskip: false,
             bits: false,
-            cols: 16,
+            cols: None,
             capitalize: false,
             is_ebcdic: false,
             is_little_endian: false,
@@ -91,7 +91,7 @@ impl Options {
                             return Err("-cols requires an integer value following it.".to_owned());
                         }
                         Some(cols) => {
-                            options.cols = std::cmp::max(1, cols);
+                            options.cols = Some(std::cmp::max(1, cols));
                             arg += 1;
                         }
                     },
