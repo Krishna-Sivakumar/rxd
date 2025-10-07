@@ -179,14 +179,25 @@ fn main() {
         if options.postscript_style {
             buffer += line_hexbuf.as_str();
         } else if line_hexbuf.len() > 0 {
-            buffer +=
-                format!("{:0>8x}: {: <39}  {}", row * columns, line_hexbuf, line_buf).as_str();
+            let yellow: Vec<u8> = vec![0x1b, 0x5b, 0x39, 0x32, 0x6d].into(); // ESC[92m
+            let reset: Vec<u8> = vec![0x1b, 0x5b, 0x30, 0x6d].into(); // ESC[0m
+            buffer += format!(
+                "{:0>8x}: {}{: <39}  {}{}",
+                row * columns,
+                String::from_utf8(yellow).unwrap(),
+                line_hexbuf,
+                line_buf,
+                String::from_utf8(reset).unwrap()
+            )
+            .as_str();
         }
 
         buffer.push('\n');
 
         // if size exceeds a page, write it out
+        // TODO This does not actually reduce memory usage. Figure out why.
         if buffer.len() >= 4096 {
+            // apparently this is line-buffered... so what is consuming memory?
             output_handle
                 .write_all(buffer.as_bytes())
                 .expect("Could not write to handle.");
