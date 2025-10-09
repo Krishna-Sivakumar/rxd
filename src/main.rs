@@ -1,6 +1,7 @@
 pub mod argparse;
 pub mod format;
 use crate::format::{Color, swap_nibbles, to_binary, to_lower_hex, to_upper_hex};
+use std::io::IsTerminal;
 use std::{cmp::min, env, fs};
 
 const HELP_TEXT: &str = "
@@ -91,10 +92,18 @@ fn main() {
         None => Box::new(std::io::stdin()),
     };
 
+    let mut is_terminal: bool;
+
     let mut outhandle: Box<dyn std::io::Write> = match options.outfile {
-        None => Box::new(std::io::stdout()),
+        None => {
+            let stdout = std::io::stdout();
+            is_terminal = stdout.is_terminal();
+            Box::new(stdout)
+        }
         Some(ref filename) => {
-            Box::new(fs::File::create(filename).expect("Could not create output file."))
+            let file = fs::File::create(filename).expect("Could not create output file.");
+            is_terminal = file.is_terminal();
+            Box::new(file)
         }
     };
 
@@ -164,21 +173,23 @@ fn main() {
                 .iter()
                 .enumerate()
             {
-                if *byte == 0 {
-                    line_buf.push_str(Color::White.ansi());
-                    line_hexbuf.push_str(Color::White.ansi());
-                } else if *byte == 0xa || *byte == 0x9 || *byte == 0x20 {
-                    line_buf.push_str(Color::Yellow.ansi());
-                    line_hexbuf.push_str(Color::Yellow.ansi());
-                } else if *byte == 0xff {
-                    line_buf.push_str(Color::Blue.ansi());
-                    line_hexbuf.push_str(Color::Blue.ansi());
-                } else if byte.is_ascii_graphic() {
-                    line_buf.push_str(Color::Green.ansi());
-                    line_hexbuf.push_str(Color::Green.ansi());
-                } else {
-                    line_buf.push_str(Color::Red.ansi());
-                    line_hexbuf.push_str(Color::Red.ansi());
+                if is_terminal {
+                    if *byte == 0 {
+                        line_buf.push_str(Color::White.ansi());
+                        line_hexbuf.push_str(Color::White.ansi());
+                    } else if *byte == 0xa || *byte == 0x9 || *byte == 0x20 {
+                        line_buf.push_str(Color::Yellow.ansi());
+                        line_hexbuf.push_str(Color::Yellow.ansi());
+                    } else if *byte == 0xff {
+                        line_buf.push_str(Color::Blue.ansi());
+                        line_hexbuf.push_str(Color::Blue.ansi());
+                    } else if byte.is_ascii_graphic() {
+                        line_buf.push_str(Color::Green.ansi());
+                        line_hexbuf.push_str(Color::Green.ansi());
+                    } else {
+                        line_buf.push_str(Color::Red.ansi());
+                        line_hexbuf.push_str(Color::Red.ansi());
+                    }
                 }
 
                 if !byte.is_ascii_graphic() && *byte != 32 {
@@ -198,18 +209,31 @@ fn main() {
             if options.postscript_style {
                 buffer += line_hexbuf.as_str();
             } else if line_hexbuf.len() > 0 {
-                std::fmt::write(
-                    &mut buffer,
-                    format_args!(
-                        "{:0>8x}: {}{: <39}  {}{}",
-                        row_counter * columns,
-                        Color::Bold.ansi(),
-                        line_hexbuf,
-                        line_buf,
-                        Color::Reset.ansi()
-                    ),
-                )
-                .expect("Write must succeed.");
+                if is_terminal {
+                    std::fmt::write(
+                        &mut buffer,
+                        format_args!(
+                            "{:0>8x}: {}{: <39}  {}{}",
+                            row_counter * columns,
+                            Color::Bold.ansi(),
+                            line_hexbuf,
+                            line_buf,
+                            Color::Reset.ansi()
+                        ),
+                    )
+                    .expect("Write must succeed.");
+                } else {
+                    std::fmt::write(
+                        &mut buffer,
+                        format_args!(
+                            "{:0>8x}: {: <39}  {}",
+                            row_counter * columns,
+                            line_hexbuf,
+                            line_buf,
+                        ),
+                    )
+                    .expect("Write must succeed.");
+                }
             }
 
             // if there's nothing in the slice, don't add a newline
