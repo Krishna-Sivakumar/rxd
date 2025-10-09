@@ -1,11 +1,59 @@
-use std::{cmp::min, env, fs};
 pub mod argparse;
+pub mod format;
+use crate::format::{Color, swap_nibbles, to_binary, to_lower_hex, to_upper_hex};
+use std::{cmp::min, env, fs};
 
 const HELP_TEXT: &str = "
 USAGE: rxd [options] [[infile] [outfile]]
 ";
 
 const VERSION: &str = "0.1";
+
+fn include_format(
+    inhandle: &mut Box<dyn std::io::Read>,
+    outhandle: &mut Box<dyn std::io::Write>,
+    options: &argparse::Options,
+) {
+    let columns = options.cols.unwrap_or(30);
+    let mut buf: Vec<u8> = Vec::with_capacity(columns * 128);
+    let include_filename = options.include_name.clone().unwrap_or("buffer".into());
+
+    let mut line_buf: String = String::new();
+    let mut tot_bytes = 0;
+    line_buf.push_str(format!("unsigned char {}[] = {{\n", include_filename).as_str());
+    while let Ok(n_bytes) = inhandle.read(&mut buf) {
+        tot_bytes += n_bytes;
+        for row in 0..(n_bytes / columns + 1) {
+            if row * columns == n_bytes {
+                continue;
+            }
+
+            line_buf.push_str("  ");
+            for byte in buf[row * columns..row * columns].as_ref().into_iter() {
+                let outbyte = swap_nibbles(*byte);
+                std::fmt::write(
+                    &mut line_buf,
+                    format_args!("0x{:x}{:x}, ", outbyte & 15, outbyte >> 4 & 15),
+                )
+                .expect("write must succeed.");
+            }
+            line_buf.push('\n');
+        }
+    }
+
+    line_buf.push_str(
+        format!(
+            "}};\nunsigned int {} = {};",
+            include_filename + "_len",
+            tot_bytes
+        )
+        .as_str(),
+    );
+
+    outhandle
+        .write_all(line_buf.as_bytes())
+        .expect("Could not write to handle.");
+}
 
 fn main() {
     use argparse::Options;
@@ -30,10 +78,10 @@ fn main() {
         return;
     }
 
-    let mut contents: Vec<u8> = Vec::new();
-
-    let mut inhandle: Box<dyn std::io::Read> = match options.infile.clone() {
-        Some(filename) => match fs::File::open(&filename) {
+    // this is the source of the memory leak
+    // TODO read slowly from the source
+    let mut inhandle: Box<dyn std::io::Read> = match options.infile {
+        Some(ref filename) => match fs::File::open(&filename) {
             Err(err) => {
                 println!("Could not open {}: {}", &filename, err.to_string());
                 return;
@@ -43,7 +91,24 @@ fn main() {
         None => Box::new(std::io::stdin()),
     };
 
+    let mut outhandle: Box<dyn std::io::Write> = match options.outfile {
+        None => Box::new(std::io::stdout()),
+        Some(ref filename) => {
+            Box::new(fs::File::create(filename).expect("Could not create output file."))
+        }
+    };
+
+    // Doing this as branching might be a problem (if dispatch isn't...) and it's easier to manage the code here
+    let formatter = if options.bits {
+        to_binary
+    } else if options.uppercase {
+        to_upper_hex
+    } else {
+        to_lower_hex
+    };
+
     // the size of contents (Vec<u8>) needs to be limited by -len_octets
+    /*
     match options.len_octets {
         None => {
             inhandle
@@ -57,13 +122,10 @@ fn main() {
                 .expect("Could not read from stream.");
         }
     }
+    */
 
     let mut buffer = String::new();
 
-    let mut line_hexbuf = String::new();
-    let mut line_buf = String::new();
-
-    let total_length = contents.len();
     let columns = options.cols.unwrap_or(if options.include_format {
         12
     } else if options.postscript_style {
@@ -74,138 +136,96 @@ fn main() {
         16
     });
 
-    let mut output_handle: Box<dyn std::io::Write> = match options.outfile {
-        None => Box::new(std::io::stdout()),
-        Some(filename) => {
-            Box::new(fs::File::create(filename).expect("Could not create output file."))
-        }
-    };
-
-    // functions to write bytes to the buffer in a particular format follow this line
-
-    fn to_lower_hex(buffer: &mut String, byte: &u8) {
-        std::fmt::write(buffer, format_args!("{:x}{:x}", byte & 15, byte >> 4 & 15))
-            .expect("write must succeed.");
-    }
-
-    fn to_upper_hex(buffer: &mut String, byte: &u8) {
-        std::fmt::write(buffer, format_args!("{:X}{:X}", byte & 15, byte >> 4 & 15))
-            .expect("write must succeed.");
-    }
-
-    fn to_binary(buffer: &mut String, byte: &u8) {
-        std::fmt::write(buffer, format_args!("{:b}{:b}", byte & 15, byte >> 4 & 15))
-            .expect("write must succeed.");
-    }
-
-    // Swaps nibbles in a byte. Needed as bytes are usually displayed in big-endian order and we
-    // need little endian.
-    fn swap_nibbles(byte: u8) -> u8 {
-        ((byte & 0x0f) << 4) | ((byte & 0xf0) >> 4)
-    }
-
-    // Doing this as branching might be a problem (if dispatch isn't...) and it's easier to manage the code here
-    let formatter = if options.bits {
-        to_binary
-    } else if options.uppercase {
-        to_upper_hex
-    } else {
-        to_lower_hex
-    };
-
     if options.include_format {
-        let include_filename = options.include_name.unwrap_or("buffer".into());
-        buffer.push_str(format!("unsigned char {}[] = {{\n", include_filename).as_str());
-
-        for row in 0..(total_length / columns + 1) {
-            if row * columns == total_length {
-                continue;
-            }
-
-            buffer.push_str("  ");
-            for byte in contents[row * columns..min(row * columns + columns, total_length)]
-                .as_ref()
-                .into_iter()
-            {
-                let outbyte = swap_nibbles(*byte);
-                std::fmt::write(
-                    &mut buffer,
-                    format_args!("0x{:x}{:x}, ", outbyte & 15, outbyte >> 4 & 15),
-                )
-                .expect("write must succeed.");
-            }
-            buffer.push('\n');
-        }
-
-        buffer.push_str(
-            format!(
-                "}};\nunsigned int {} = {};",
-                include_filename + "_len",
-                contents.len()
-            )
-            .as_str(),
-        );
-
-        output_handle
-            .write_all(buffer.as_bytes())
-            .expect("Could not write to handle.");
-
+        include_format(&mut inhandle, &mut outhandle, &options);
         return;
     }
 
-    for row in 0..(total_length / columns + 1) {
-        line_hexbuf.clear();
-        line_buf.clear();
+    let mut total_bytes_read: usize = 0;
+    let mut group_buf: Vec<u8> = Vec::new();
+    group_buf.resize(columns * 128, 0);
 
-        for (idx, byte) in contents[row * columns..min(row * columns + columns, total_length)]
-            .as_ref()
-            .iter()
-            .enumerate()
-        {
-            if !byte.is_ascii_graphic() && *byte != 32 {
-                line_buf.push('.')
-            } else {
-                line_buf.push((*byte).into())
-            }
+    let mut line_hexbuf = String::new();
+    let mut line_buf = String::new();
+    let mut row_counter: usize = 0;
 
-            if !options.postscript_style && idx % options.group_size == 0 && idx > 0 {
-                line_hexbuf.push(' ')
-            }
-
-            let outbyte = swap_nibbles(*byte);
-            formatter(&mut line_hexbuf, &outbyte);
+    while let Ok(bytes_read) = inhandle.read(&mut group_buf) {
+        total_bytes_read += bytes_read;
+        if bytes_read == 0 {
+            break;
         }
 
-        if options.postscript_style {
-            buffer += line_hexbuf.as_str();
-        } else if line_hexbuf.len() > 0 {
-            let yellow: Vec<u8> = vec![0x1b, 0x5b, 0x39, 0x32, 0x6d].into(); // ESC[92m
-            let reset: Vec<u8> = vec![0x1b, 0x5b, 0x30, 0x6d].into(); // ESC[0m
-            buffer += format!(
-                "{:0>8x}: {}{: <39}  {}{}",
-                row * columns,
-                String::from_utf8(yellow).unwrap(),
-                line_hexbuf,
-                line_buf,
-                String::from_utf8(reset).unwrap()
-            )
-            .as_str();
-        }
+        for row in 0..(bytes_read / columns + 1) {
+            line_hexbuf.clear();
+            line_buf.clear();
 
-        buffer.push('\n');
+            for (idx, byte) in group_buf[row * columns..min(row * columns + columns, bytes_read)]
+                .as_ref()
+                .iter()
+                .enumerate()
+            {
+                if *byte == 0 {
+                    line_buf.push_str(Color::White.ansi());
+                    line_hexbuf.push_str(Color::White.ansi());
+                } else if *byte == 0xa || *byte == 0x9 || *byte == 0x20 {
+                    line_buf.push_str(Color::Yellow.ansi());
+                    line_hexbuf.push_str(Color::Yellow.ansi());
+                } else if *byte == 0xff {
+                    line_buf.push_str(Color::Blue.ansi());
+                    line_hexbuf.push_str(Color::Blue.ansi());
+                } else if byte.is_ascii_graphic() {
+                    line_buf.push_str(Color::Green.ansi());
+                    line_hexbuf.push_str(Color::Green.ansi());
+                } else {
+                    line_buf.push_str(Color::Red.ansi());
+                    line_hexbuf.push_str(Color::Red.ansi());
+                }
 
-        // if size exceeds a page, write it out
-        // TODO This does not actually reduce memory usage. Figure out why.
-        if buffer.len() >= 4096 {
-            // apparently this is line-buffered... so what is consuming memory?
-            output_handle
+                if !byte.is_ascii_graphic() && *byte != 32 {
+                    line_buf.push('.')
+                } else {
+                    line_buf.push((*byte).into())
+                }
+
+                if !options.postscript_style && idx % options.group_size == 0 && idx > 0 {
+                    line_hexbuf.push(' ')
+                }
+
+                let outbyte = swap_nibbles(*byte);
+                formatter(&mut line_hexbuf, &outbyte);
+            }
+
+            if options.postscript_style {
+                buffer += line_hexbuf.as_str();
+            } else if line_hexbuf.len() > 0 {
+                std::fmt::write(
+                    &mut buffer,
+                    format_args!(
+                        "{:0>8x}: {}{: <39}  {}{}",
+                        row_counter * columns,
+                        Color::Bold.ansi(),
+                        line_hexbuf,
+                        line_buf,
+                        Color::Reset.ansi()
+                    ),
+                )
+                .expect("Write must succeed.");
+            }
+
+            // if there's nothing in the slice, don't add a newline
+            if min(row * columns + columns, bytes_read) - row * columns > 0 {
+                buffer.push('\n');
+                row_counter += 1;
+            }
+
+            outhandle
                 .write_all(buffer.as_bytes())
                 .expect("Could not write to handle.");
             buffer.clear();
         }
     }
 
-    output_handle
+    outhandle
         .write_all(buffer.trim().as_bytes())
         .expect("Could not write to handle.");
     println!(""); // final newline
