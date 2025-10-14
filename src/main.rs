@@ -230,10 +230,13 @@ fn regular_format(
             }
             row_counter += 1;
 
-            outhandle
-                .write_all(buffer.as_bytes())
-                .expect("Could not write to handle.");
-            buffer.clear();
+            if buffer.len() >= 4096 {
+                // we want to write out a page at the very least
+                outhandle
+                    .write_all(buffer.as_bytes())
+                    .expect("Could not write to handle.");
+                buffer.clear();
+            }
         }
     }
 

@@ -39,15 +39,11 @@ const UPPER_BYTE_MAP: [&str; 256] = [
 /// Write byte in lower-hex, little-endian format to the string provided.
 pub fn to_lower_hex(buffer: &mut String, byte: &u8) {
     buffer.push_str(BYTE_MAP[*byte as usize]);
-    // std::fmt::write(buffer, format_args!("{:x}{:x}", byte & 15, byte >> 4 & 15))
-    // .expect("write must succeed.");
 }
 
 /// Write byte in upper-hex, little-endian format to the string provided.
 pub fn to_upper_hex(buffer: &mut String, byte: &u8) {
     buffer.push_str(UPPER_BYTE_MAP[*byte as usize]);
-    // std::fmt::write(buffer, format_args!("{:X}{:X}", byte & 15, byte >> 4 & 15))
-    // .expect("write must succeed.");
 }
 
 /// Write byte in binary format to the string provided.
