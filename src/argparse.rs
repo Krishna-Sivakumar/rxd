@@ -8,8 +8,6 @@ pub struct Options {
     pub cols: Option<usize>,
     /// Capitalize variable names in C include file style, when using -i
     pub capitalize: bool,
-    /// DROPPED Change the character encoding in the RHS from ASCII to EBCDIC.
-    pub is_ebcdic: bool,
     /// Switch to little-endian hex dump.
     pub is_little_endian: bool,
     /// the size of a group of bytes in the hexdump. Default is 2.
@@ -47,7 +45,6 @@ impl Options {
             bits: false,
             cols: None,
             capitalize: false,
-            is_ebcdic: false,
             is_little_endian: false,
             group_size: 2,
             display_help: false,
@@ -96,7 +93,6 @@ impl Options {
                         }
                     },
                     "-C" | "-capitalize" => options.capitalize = true,
-                    "-E" | "-EBCDIC" => options.is_ebcdic = true,
                     "-e" => options.is_little_endian = true,
                     "-g" | "-groupsize" => match take::<usize>(&arguments, &arg) {
                         None => {
