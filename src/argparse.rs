@@ -1,3 +1,5 @@
+// TODO bugfix seek isn't parsed properly
+
 #[derive(Debug)]
 pub struct Options {
     /// TODO toggles autoskip. A single '*' replaces NUL-lines.
@@ -10,7 +12,7 @@ pub struct Options {
     pub capitalize: bool,
     /// DROPPED Change the character encoding in the RHS from ASCII to EBCDIC.
     pub is_ebcdic: bool,
-    /// TODO Switch to little-endian hex dump.
+    /// Switch to little-endian hex dump.
     pub is_little_endian: bool,
     /// the size of a group of bytes in the hexdump. Default is 2.
     pub group_size: usize,

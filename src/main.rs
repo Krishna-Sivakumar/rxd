@@ -2,7 +2,7 @@ pub mod argparse;
 pub mod bufio;
 pub mod format;
 use crate::format::{Color, swap_nibbles, to_binary, to_lower_hex, to_upper_hex};
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Seek, SeekFrom};
 use std::{env, fs};
 
 const HELP_TEXT: &str = "
@@ -114,7 +114,6 @@ fn regular_format(
 
         let bytes = reader.as_ref();
 
-        // for row in 0..(bytes_read / columns + 1) {
         for slice in bytes.get(0..bytes_read).unwrap().chunks(columns) {
             line_hexbuf.clear();
             line_buf.clear();
@@ -232,7 +231,7 @@ fn regular_format(
 fn main() {
     use argparse::Options;
 
-    let arguments: Vec<String> = env::args().collect(); //aaaa
+    let arguments: Vec<String> = env::args().collect();
     let options = match Options::parse_options(arguments[1..].to_owned()) {
         Ok(opt) => opt,
         Err(err) => {
@@ -252,17 +251,29 @@ fn main() {
         return;
     }
 
-    // this is the source of the memory leak
-    // TODO read slowly from the source
     let inhandle: Box<dyn std::io::Read> = match options.infile {
         Some(ref filename) => match fs::File::open(&filename) {
             Err(err) => {
                 println!("Could not open {}: {}", &filename, err.to_string());
                 return;
             }
-            Ok(handle) => Box::new(handle),
+            Ok(mut handle) => {
+                if options.seek > 0 {
+                    // TODO seek here
+                    // handle.seek(SeekFrom::Start(options.seek.into()));
+                } else if options.seek < 0 {
+                    handle
+                        .seek(SeekFrom::End(options.seek.into()))
+                        .expect("Could not seek to location.");
+                }
+                Box::new(handle)
+            }
         },
-        None => Box::new(std::io::stdin()),
+        None => {
+            // TODO seek here
+            let stdin = std::io::stdin();
+            Box::new(stdin)
+        }
     };
 
     let (outhandle, is_terminal): (Box<dyn std::io::Write>, bool) = match options.outfile {
@@ -274,6 +285,7 @@ fn main() {
         Some(ref filename) => {
             let file = fs::File::create(filename).expect("Could not create output file.");
             let is_terminal = file.is_terminal();
+
             (Box::new(file), is_terminal)
         }
     };
