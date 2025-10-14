@@ -6,7 +6,7 @@ pub struct Options {
     pub bits: bool,
     /// Specifies the number of columns in the hex dump.
     pub cols: Option<usize>,
-    /// TODO Capitalize variable names in C include file style, when using -i
+    /// Capitalize variable names in C include file style, when using -i
     pub capitalize: bool,
     /// DROPPED Change the character encoding in the RHS from ASCII to EBCDIC.
     pub is_ebcdic: bool,
