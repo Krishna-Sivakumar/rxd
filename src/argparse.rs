@@ -30,7 +30,7 @@ pub struct Options {
     pub postscript_style: bool,
     /// TODO Convert hex dump to binary.
     pub revert: bool,
-    /// TODO Start at <seek> bytes.
+    /// Start at <seek> bytes.
     pub seek: i32,
     /// Use upper-case hex letters.
     pub uppercase: bool,
@@ -152,7 +152,10 @@ impl Options {
                         None => {
                             return Err("-s requires an integer offset following it.".to_owned());
                         }
-                        Some(offset) => options.seek = offset,
+                        Some(offset) => {
+                            options.seek = offset;
+                            arg += 1;
+                        }
                     },
                     "-u" => options.uppercase = true,
                     "-v" => options.display_version = true,

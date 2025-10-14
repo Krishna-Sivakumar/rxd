@@ -75,7 +75,7 @@ fn include_format(
 
 /// prints bytes read from `inhandle` to `outhandle` in xxd's regular format.
 fn regular_format(
-    inhandle: Box<dyn std::io::Read>,
+    mut inhandle: Box<dyn std::io::Read>,
     mut outhandle: Box<dyn std::io::Write>,
     options: argparse::Options,
     is_terminal: bool,
@@ -104,6 +104,18 @@ fn regular_format(
     let mut line_hexbuf = String::new();
     let mut line_buf = String::new();
     let mut row_counter: usize = 0;
+
+    if options.seek != 0 {
+        if options.seek < 0 {
+            println!("Sorry, cannot seek.");
+            return;
+        }
+        let mut tempbuf: Vec<u8> = Vec::new();
+        tempbuf.resize(options.seek.abs_diff(0) as usize, 0);
+        inhandle
+            .read(&mut tempbuf)
+            .expect("Could not seek to location.");
+    }
 
     let mut reader = bufio::LimitedBufReader::new(columns * 128, inhandle, options.len_octets);
 
@@ -259,8 +271,9 @@ fn main() {
             }
             Ok(mut handle) => {
                 if options.seek > 0 {
-                    // TODO seek here
-                    // handle.seek(SeekFrom::Start(options.seek.into()));
+                    handle
+                        .seek(SeekFrom::Start(options.seek.abs_diff(0).into()))
+                        .expect("Could not seek to location.");
                 } else if options.seek < 0 {
                     handle
                         .seek(SeekFrom::End(options.seek.into()))
@@ -269,11 +282,7 @@ fn main() {
                 Box::new(handle)
             }
         },
-        None => {
-            // TODO seek here
-            let stdin = std::io::stdin();
-            Box::new(stdin)
-        }
+        None => Box::new(std::io::stdin()),
     };
 
     let (outhandle, is_terminal): (Box<dyn std::io::Write>, bool) = match options.outfile {
