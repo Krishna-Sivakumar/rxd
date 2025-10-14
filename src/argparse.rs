@@ -1,5 +1,3 @@
-// TODO bugfix seek isn't parsed properly
-
 #[derive(Debug)]
 pub struct Options {
     /// TODO toggles autoskip. A single '*' replaces NUL-lines.

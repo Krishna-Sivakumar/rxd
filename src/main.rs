@@ -149,16 +149,20 @@ fn regular_format(
             for group in slice.chunks(options.group_size) {
                 if options.is_little_endian {
                     for byte in group.iter().rev() {
-                        let colour = get_colour(byte);
-                        line_hexbuf.push_str(colour.ansi());
+                        if is_terminal {
+                            let colour = get_colour(byte);
+                            line_hexbuf.push_str(colour.ansi());
+                        }
                         let outbyte = swap_nibbles(*byte);
                         formatter(&mut line_hexbuf, &outbyte);
                         graphic_bytes += 2;
                     }
                 } else {
                     for byte in group.iter() {
-                        let colour = get_colour(byte);
-                        line_hexbuf.push_str(colour.ansi());
+                        if is_terminal {
+                            let colour = get_colour(byte);
+                            line_hexbuf.push_str(colour.ansi());
+                        }
                         let outbyte = swap_nibbles(*byte);
                         formatter(&mut line_hexbuf, &outbyte);
                         graphic_bytes += 2;
@@ -166,8 +170,10 @@ fn regular_format(
                 }
 
                 for byte in group {
-                    let colour = get_colour(byte);
-                    line_buf.push_str(colour.ansi());
+                    if is_terminal {
+                        let colour = get_colour(byte);
+                        line_buf.push_str(colour.ansi());
+                    }
                     if !byte.is_ascii_graphic() && *byte != 0x20 {
                         line_buf.push('.')
                     } else {
