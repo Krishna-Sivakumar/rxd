@@ -3,7 +3,7 @@ pub mod bufio;
 pub mod format;
 use crate::format::{Color, swap_nibbles, to_binary, to_lower_hex, to_upper_hex};
 use std::io::IsTerminal;
-use std::{cmp::min, env, fs};
+use std::{env, fs};
 
 const HELP_TEXT: &str = "
 USAGE: rxd [options] [[infile] [outfile]]
@@ -114,57 +114,60 @@ fn regular_format(
 
         let bytes = reader.as_ref();
 
-        for row in 0..(bytes_read / columns + 1) {
+        // for row in 0..(bytes_read / columns + 1) {
+        for slice in bytes.get(0..bytes_read).unwrap().chunks(columns) {
             line_hexbuf.clear();
             line_buf.clear();
 
             let mut graphic_bytes = 0; // the amount of graphic bytes written to line_hexbuf
 
-            let slice = bytes[row * columns..min(row * columns + columns, bytes_read)].as_ref();
-
-            if false {
-                for group in 0..(columns / options.group_size) {
-                    if !options.postscript_style {
-                        line_hexbuf.push(' ');
-                    }
+            fn get_colour(byte: &u8) -> Color {
+                if *byte == 0 {
+                    Color::White
+                } else if *byte == 0xa || *byte == 0x9 || *byte == 0x20 {
+                    Color::Yellow
+                } else if *byte == 0xff {
+                    Color::Blue
+                } else if byte.is_ascii_graphic() {
+                    Color::Green
+                } else {
+                    Color::Red
                 }
             }
 
-            for (idx, byte) in slice.iter().enumerate() {
-                if is_terminal {
-                    if *byte == 0 {
-                        line_buf.push_str(Color::White.ansi());
-                        line_hexbuf.push_str(Color::White.ansi());
-                    } else if *byte == 0xa || *byte == 0x9 || *byte == 0x20 {
-                        line_buf.push_str(Color::Yellow.ansi());
-                        line_hexbuf.push_str(Color::Yellow.ansi());
-                    } else if *byte == 0xff {
-                        line_buf.push_str(Color::Blue.ansi());
-                        line_hexbuf.push_str(Color::Blue.ansi());
-                    } else if byte.is_ascii_graphic() {
-                        line_buf.push_str(Color::Green.ansi());
-                        line_hexbuf.push_str(Color::Green.ansi());
-                    } else {
-                        line_buf.push_str(Color::Red.ansi());
-                        line_hexbuf.push_str(Color::Red.ansi());
+            for group in slice.chunks(options.group_size) {
+                if options.is_little_endian {
+                    for byte in group.iter().rev() {
+                        let colour = get_colour(byte);
+                        line_hexbuf.push_str(colour.ansi());
+                        let outbyte = swap_nibbles(*byte);
+                        formatter(&mut line_hexbuf, &outbyte);
+                        graphic_bytes += 2;
+                    }
+                } else {
+                    for byte in group.iter() {
+                        let colour = get_colour(byte);
+                        line_hexbuf.push_str(colour.ansi());
+                        let outbyte = swap_nibbles(*byte);
+                        formatter(&mut line_hexbuf, &outbyte);
+                        graphic_bytes += 2;
                     }
                 }
 
-                if !byte.is_ascii_graphic() && *byte != 32 {
-                    line_buf.push('.')
-                } else {
-                    line_buf.push((*byte).into())
+                for byte in group {
+                    let colour = get_colour(byte);
+                    line_buf.push_str(colour.ansi());
+                    if !byte.is_ascii_graphic() && *byte != 0x20 {
+                        line_buf.push('.')
+                    } else {
+                        line_buf.push((*byte).into())
+                    }
                 }
 
-                if !options.postscript_style && idx % options.group_size == 0 && idx > 0 {
+                if !options.postscript_style {
                     line_hexbuf.push(' ');
                     graphic_bytes += 1;
                 }
-
-                let outbyte = swap_nibbles(*byte);
-                formatter(&mut line_hexbuf, &outbyte);
-
-                graphic_bytes += 2;
             }
 
             if options.postscript_style {
@@ -190,7 +193,7 @@ fn regular_format(
                             "{:0>8x}: {}{}  {}{}",
                             row_counter * columns,
                             Color::Bold.ansi(),
-                            line_hexbuf, // TODO extend this with `padding` length spaces.
+                            line_hexbuf,
                             line_buf,
                             Color::Reset.ansi()
                         ),
@@ -210,11 +213,8 @@ fn regular_format(
                 }
             }
 
-            // if there's nothing in the slice, don't add a newline
-            if min(row * columns + columns, bytes_read) - row * columns > 0 {
-                buffer.push('\n');
-                row_counter += 1;
-            }
+            buffer.push('\n');
+            row_counter += 1;
 
             outhandle
                 .write_all(buffer.as_bytes())
