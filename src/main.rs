@@ -1,16 +1,40 @@
 pub mod argparse;
 pub mod bufio;
 pub mod format;
+pub mod revert;
 use crate::format::{Color, to_binary, to_lower_hex, to_upper_hex};
 use std::io::{IsTerminal, Seek, SeekFrom};
 use std::{env, fs};
 
 // TODO copy xxd help text here at some point
 const HELP_TEXT: &str = "
-USAGE: rxd [options] [[infile] [outfile]]
+Usage:
+       xxd [options] [infile [outfile]]
+    or
+       xxd -r [-s [-]offset] [-c cols] [-ps] [infile [outfile]]
+Options:
+    -a          toggle autoskip: A single '*' replaces nul-lines. Default off.
+    -b          binary digit dump (incompatible with -ps,-i). Default hex.
+    -C          capitalize variable names in C include file style (-i).
+    -c cols     format <cols> octets per line. Default 16 (-i: 12, -ps: 30).
+    -e          little-endian dump (incompatible with -ps,-i,-r).
+    -g bytes    number of octets per group in normal output. Default 2 (-e: 4).
+    -h          print this summary.
+    -i          output in C include file style.
+    -l len      stop after <len> octets.
+    -n name     set the variable name used in C include output (-i).
+    -o off      add <off> to the displayed file position.
+    -ps         output in postscript plain hexdump style.
+    -r          reverse operation: convert (or patch) hexdump into binary.
+    -r -s off   revert with <off> added to file positions found in hexdump.
+    -d          show offset in decimal instead of hex.
+    -s [+][-]seek  start at <seek> bytes abs. (or +: rel.) infile offset.
+    -u          use upper case hex letters.
+    -R when     colorize the output; <when> can be 'always', 'auto' or 'never'. Default: 'auto'.
+    -v          show version: \"rxd 2025-10 by Krishna Sivakumar\".
 ";
 
-const VERSION: &str = "0.1";
+const VERSION: &str = "rxd 2025-10 by Krishna Sivakumar";
 
 /// prints bytes read from `inhandle` to `outhandle` in C include format.
 fn include_format(
@@ -304,6 +328,11 @@ fn main() {
             (Box::new(file), is_terminal)
         }
     };
+
+    if options.revert {
+        revert::revert(inhandle, outhandle, options);
+        return;
+    }
 
     if options.include_format {
         include_format(inhandle, outhandle, options);
