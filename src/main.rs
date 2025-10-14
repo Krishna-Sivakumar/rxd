@@ -1,10 +1,11 @@
 pub mod argparse;
 pub mod bufio;
 pub mod format;
-use crate::format::{Color, swap_nibbles, to_binary, to_lower_hex, to_upper_hex};
+use crate::format::{Color, to_binary, to_lower_hex, to_upper_hex};
 use std::io::{IsTerminal, Seek, SeekFrom};
 use std::{env, fs};
 
+// TODO copy xxd help text here at some point
 const HELP_TEXT: &str = "
 USAGE: rxd [options] [[infile] [outfile]]
 ";
@@ -48,12 +49,9 @@ fn include_format(
                 .as_ref()
                 .into_iter()
             {
-                let outbyte = swap_nibbles(*byte);
-                std::fmt::write(
-                    &mut line_buf,
-                    format_args!("0x{:x}{:x}, ", outbyte & 15, outbyte >> 4 & 15),
-                )
-                .expect("write must succeed.");
+                line_buf.push_str("0x");
+                format::to_lower_hex(&mut line_buf, &byte);
+                line_buf.push_str(", ");
             }
             line_buf.push('\n');
         }
@@ -89,8 +87,6 @@ fn regular_format(
         to_lower_hex
     };
 
-    let mut buffer = String::new();
-
     let columns = options.cols.unwrap_or(if options.include_format {
         12
     } else if options.postscript_style {
@@ -101,8 +97,9 @@ fn regular_format(
         16
     });
 
-    let mut line_hexbuf = String::new();
-    let mut line_buf = String::new();
+    let mut buffer = String::with_capacity(columns * 128 * 4);
+    let mut line_hexbuf = String::with_capacity(columns * 128 * 4);
+    let mut line_buf = String::with_capacity(columns * 128 * 4);
     let mut row_counter: usize = 0;
 
     if options.seek != 0 {
@@ -149,28 +146,26 @@ fn regular_format(
             for group in slice.chunks(options.group_size) {
                 if options.is_little_endian {
                     for byte in group.iter().rev() {
-                        if is_terminal {
+                        if is_terminal && !options.postscript_style {
                             let colour = get_colour(byte);
                             line_hexbuf.push_str(colour.ansi());
                         }
-                        let outbyte = swap_nibbles(*byte);
-                        formatter(&mut line_hexbuf, &outbyte);
+                        formatter(&mut line_hexbuf, &byte);
                         graphic_bytes += 2;
                     }
                 } else {
                     for byte in group.iter() {
-                        if is_terminal {
+                        if is_terminal && !options.postscript_style {
                             let colour = get_colour(byte);
                             line_hexbuf.push_str(colour.ansi());
                         }
-                        let outbyte = swap_nibbles(*byte);
-                        formatter(&mut line_hexbuf, &outbyte);
+                        formatter(&mut line_hexbuf, &byte);
                         graphic_bytes += 2;
                     }
                 }
 
                 for byte in group {
-                    if is_terminal {
+                    if is_terminal && !options.postscript_style {
                         let colour = get_colour(byte);
                         line_buf.push_str(colour.ansi());
                     }
@@ -230,7 +225,9 @@ fn regular_format(
                 }
             }
 
-            buffer.push('\n');
+            if !options.postscript_style {
+                buffer.push('\n');
+            }
             row_counter += 1;
 
             outhandle
