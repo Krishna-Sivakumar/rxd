@@ -1,3 +1,5 @@
+use std::io::Write;
+
 const BYTE_MAP: [&str; 256] = [
     "00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "0a", "0b", "0c", "0d", "0e", "0f",
     "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "1a", "1b", "1c", "1d", "1e", "1f",
@@ -37,19 +39,22 @@ const UPPER_BYTE_MAP: [&str; 256] = [
 ];
 
 /// Write byte in lower-hex, little-endian format to the string provided.
-pub fn to_lower_hex(buffer: &mut String, byte: &u8) {
-    buffer.push_str(BYTE_MAP[*byte as usize]);
+pub fn to_lower_hex(buffer: &mut dyn Write, byte: &u8) {
+    let bytes = BYTE_MAP[*byte as usize].as_bytes();
+    buffer.write(bytes).expect("Write must succeed.");
 }
 
 /// Write byte in upper-hex, little-endian format to the string provided.
-pub fn to_upper_hex(buffer: &mut String, byte: &u8) {
-    buffer.push_str(UPPER_BYTE_MAP[*byte as usize]);
+pub fn to_upper_hex(buffer: &mut dyn Write, byte: &u8) {
+    let bytes = UPPER_BYTE_MAP[*byte as usize].as_bytes();
+    buffer.write(bytes).expect("Write must succeed.");
 }
 
 /// Write byte in binary format to the string provided.
-pub fn to_binary(buffer: &mut String, byte: &u8) {
-    std::fmt::write(buffer, format_args!("{:b}{:b}", byte & 15, byte >> 4 & 15))
-        .expect("write must succeed.");
+pub fn to_binary(buffer: &mut dyn Write, byte: &u8) {
+    buffer
+        .write_fmt(format_args!("{:b}{:b}", byte & 15, byte >> 4 & 15))
+        .expect("Write must succeed.");
 }
 
 pub enum Color {

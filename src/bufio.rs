@@ -35,10 +35,12 @@ impl LimitedBufReader {
             let bytes_remaining = limit - self.bytes_read;
             if bytes_read > bytes_remaining {
                 self.bytes_read += bytes_remaining;
+                self.buffer.truncate(bytes_remaining);
                 return Ok(bytes_remaining);
             }
         }
 
+        self.buffer.truncate(bytes_read);
         self.bytes_read += bytes_read;
         Ok(bytes_read)
     }

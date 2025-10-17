@@ -3,10 +3,9 @@ pub mod bufio;
 pub mod format;
 pub mod revert;
 use crate::format::{Color, to_binary, to_lower_hex, to_upper_hex};
-use std::io::{IsTerminal, Seek, SeekFrom};
+use std::io::{IsTerminal, Seek, SeekFrom, Write};
 use std::{env, fs};
 
-// TODO copy xxd help text here at some point
 const HELP_TEXT: &str = "
 Usage:
        xxd [options] [infile [outfile]]
@@ -74,7 +73,8 @@ fn include_format(
                 .into_iter()
             {
                 line_buf.push_str("0x");
-                format::to_lower_hex(&mut line_buf, &byte);
+                // TODO FIX THIS
+                // format::to_lower_hex(&mut line_buf, &byte);
                 line_buf.push_str(", ");
             }
             line_buf.push('\n');
@@ -95,10 +95,12 @@ fn include_format(
         .expect("Could not write to handle.");
 }
 
+pub struct StringBuffer {}
+
 /// prints bytes read from `inhandle` to `outhandle` in xxd's regular format.
 fn regular_format(
     mut inhandle: Box<dyn std::io::Read>,
-    mut outhandle: Box<dyn std::io::Write>,
+    outhandle: Box<dyn std::io::Write>,
     options: argparse::Options,
     is_terminal: bool,
 ) {
@@ -121,9 +123,6 @@ fn regular_format(
         16
     });
 
-    let mut buffer = String::with_capacity(columns * 128 * 4);
-    let mut line_hexbuf = String::with_capacity(columns * 128 * 4);
-    let mut line_buf = String::with_capacity(columns * 128 * 4);
     let mut row_counter: usize = 0;
 
     if options.seek != 0 {
@@ -138,7 +137,8 @@ fn regular_format(
             .expect("Could not seek to location.");
     }
 
-    let mut reader = bufio::LimitedBufReader::new(columns * 128, inhandle, options.len_octets);
+    let mut reader = bufio::LimitedBufReader::new(columns * 128 * 16, inhandle, options.len_octets);
+    let mut buffer = std::io::BufWriter::with_capacity(columns * 128 * 16, outhandle);
 
     while let Ok(bytes_read) = reader.read() {
         if bytes_read == 0 {
@@ -148,9 +148,6 @@ fn regular_format(
         let bytes = reader.as_ref();
 
         for slice in bytes.get(0..bytes_read).unwrap().chunks(columns) {
-            line_hexbuf.clear();
-            line_buf.clear();
-
             let mut graphic_bytes = 0; // the amount of graphic bytes written to line_hexbuf
 
             fn get_colour(byte: &u8) -> Color {
@@ -167,107 +164,93 @@ fn regular_format(
                 }
             }
 
+            if !options.postscript_style {
+                buffer
+                    .write_fmt(format_args!("{:0>8x}: ", row_counter * columns))
+                    .expect("Write must succeed.");
+                if is_terminal {
+                    buffer
+                        .write(Color::Bold.ansi().as_bytes())
+                        .expect("Write must succeed.");
+                }
+            }
+
             for group in slice.chunks(options.group_size) {
                 if options.is_little_endian {
                     for byte in group.iter().rev() {
                         if is_terminal && !options.postscript_style {
                             let colour = get_colour(byte);
-                            line_hexbuf.push_str(colour.ansi());
+                            buffer
+                                .write(colour.ansi().as_bytes())
+                                .expect("Write must succeed.");
                         }
-                        formatter(&mut line_hexbuf, &byte);
+                        formatter(&mut buffer, &byte);
                         graphic_bytes += 2;
                     }
                 } else {
                     for byte in group.iter() {
                         if is_terminal && !options.postscript_style {
                             let colour = get_colour(byte);
-                            line_hexbuf.push_str(colour.ansi());
+                            buffer
+                                .write(colour.ansi().as_bytes())
+                                .expect("Write must succeed.");
                         }
-                        formatter(&mut line_hexbuf, &byte);
+                        formatter(&mut buffer, &byte);
                         graphic_bytes += 2;
                     }
                 }
 
-                for byte in group {
-                    if is_terminal && !options.postscript_style {
-                        let colour = get_colour(byte);
-                        line_buf.push_str(colour.ansi());
-                    }
-                    if !byte.is_ascii_graphic() && *byte != 0x20 {
-                        line_buf.push('.')
-                    } else {
-                        line_buf.push((*byte).into())
-                    }
-                }
-
                 if !options.postscript_style {
-                    line_hexbuf.push(' ');
-                    graphic_bytes += 1;
-                }
-            }
-
-            if options.postscript_style {
-                buffer += line_hexbuf.as_str();
-            } else if line_hexbuf.len() > 0 {
-                // padding calculation; check how many bytes line_hexbuf needs to be padded out
-                // so that line_buf appears in a straight line.
-                let total_width = columns * 2 + (columns / options.group_size);
-                let padding = if total_width < graphic_bytes {
-                    0
-                } else {
-                    total_width - graphic_bytes
-                };
-
-                for _ in 0..padding {
-                    line_hexbuf.push(' ');
-                }
-
-                if is_terminal {
-                    std::fmt::write(
-                        &mut buffer,
-                        format_args!(
-                            "{:0>8x}: {}{}  {}{}",
-                            row_counter * columns,
-                            Color::Bold.ansi(),
-                            line_hexbuf,
-                            line_buf,
-                            Color::Reset.ansi()
-                        ),
-                    )
-                    .expect("Write must succeed.");
-                } else {
-                    std::fmt::write(
-                        &mut buffer,
-                        format_args!(
-                            "{:0>8x}: {}  {}",
-                            row_counter * columns,
-                            line_hexbuf,
-                            line_buf,
-                        ),
-                    )
-                    .expect("Write must succeed.");
+                    buffer.write(" ".as_bytes()).expect("Write must succeed.");
                 }
             }
 
             if !options.postscript_style {
-                buffer.push('\n');
+                buffer.write(" ".as_bytes()).expect("Write must succeed.");
             }
-            row_counter += 1;
 
-            if buffer.len() >= 4096 {
-                // we want to write out a page at the very least
-                outhandle
-                    .write_all(buffer.as_bytes())
-                    .expect("Could not write to handle.");
-                buffer.clear();
+            if !options.postscript_style {
+                for group in slice.chunks(options.group_size) {
+                    for byte in group {
+                        if is_terminal && !options.postscript_style {
+                            let colour = get_colour(byte);
+                            buffer
+                                .write(colour.ansi().as_bytes())
+                                .expect("Write must succeed.");
+                        }
+                        if !byte.is_ascii_graphic() && *byte != 0x20 {
+                            buffer.write(".".as_bytes()).expect("Write must succeed.");
+                        } else {
+                            buffer.write(&[*byte]).expect("Write must succeed.");
+                        }
+                    }
+                }
+            }
+
+            // padding calculation; check how many bytes line_hexbuf needs to be padded out
+            // so that line_buf appears in a straight line.
+            let total_width = columns * 2 + (columns / options.group_size);
+            let padding = if total_width < graphic_bytes {
+                0
+            } else {
+                total_width - graphic_bytes
+            };
+
+            for _ in 0..padding {
+                buffer.write(" ".as_bytes()).expect("Write must succeed.");
+            }
+
+            buffer
+                .write(Color::Reset.ansi().as_bytes())
+                .expect("Write must succeed.");
+
+            if !options.postscript_style {
+                buffer.write("\n".as_bytes()).expect("Write must succeed.");
             }
         }
-    }
 
-    outhandle
-        .write_all(buffer.trim().as_bytes())
-        .expect("Could not write to handle.");
-    println!(""); // final newline
+        row_counter += 1;
+    }
 }
 
 fn main() {
