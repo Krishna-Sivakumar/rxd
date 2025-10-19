@@ -95,7 +95,44 @@ fn include_format(
         .expect("Could not write to handle.");
 }
 
-pub struct StringBuffer {}
+/// prints bytes read from `inhandle` to `outhandle` in postscript (only hex bytes) format.
+fn postscript_format(
+    mut inhandle: Box<dyn std::io::Read>,
+    outhandle: Box<dyn std::io::Write>,
+    options: argparse::Options,
+) {
+    let columns = options.cols.unwrap_or(16);
+
+    if options.seek != 0 {
+        if options.seek < 0 {
+            println!("Sorry, cannot seek.");
+            return;
+        }
+        let mut tempbuf: Vec<u8> = Vec::new();
+        tempbuf.resize(options.seek.abs_diff(0) as usize, 0);
+        inhandle
+            .read(&mut tempbuf)
+            .expect("Could not seek to location.");
+    }
+
+    let mut reader = bufio::LimitedBufReader::new(columns * 128 * 16, inhandle, options.len_octets);
+    let mut writer = std::io::BufWriter::with_capacity(columns * 128 * 16, outhandle);
+
+    while let Ok(bytes_read) = reader.read() {
+        if bytes_read == 0 {
+            break;
+        }
+
+        let bytes = reader.as_ref();
+        for chunk in bytes.chunks(columns) {
+            for byte in chunk {
+                to_lower_hex(&mut writer, byte);
+            }
+            #[allow(unused_must_use)]
+            writer.write("\n".as_bytes()); // don't need to check this result
+        }
+    }
+}
 
 /// prints bytes read from `inhandle` to `outhandle` in xxd's regular format.
 fn regular_format(
@@ -164,21 +201,19 @@ fn regular_format(
                 }
             }
 
-            if !options.postscript_style {
+            buffer
+                .write_fmt(format_args!("{:0>8x}: ", row_counter * columns))
+                .expect("Write must succeed.");
+            if is_terminal {
                 buffer
-                    .write_fmt(format_args!("{:0>8x}: ", row_counter * columns))
+                    .write(Color::Bold.ansi().as_bytes())
                     .expect("Write must succeed.");
-                if is_terminal {
-                    buffer
-                        .write(Color::Bold.ansi().as_bytes())
-                        .expect("Write must succeed.");
-                }
             }
 
             for group in slice.chunks(options.group_size) {
                 if options.is_little_endian {
                     for byte in group.iter().rev() {
-                        if is_terminal && !options.postscript_style {
+                        if is_terminal {
                             let colour = get_colour(byte);
                             buffer
                                 .write(colour.ansi().as_bytes())
@@ -189,7 +224,7 @@ fn regular_format(
                     }
                 } else {
                     for byte in group.iter() {
-                        if is_terminal && !options.postscript_style {
+                        if is_terminal {
                             let colour = get_colour(byte);
                             buffer
                                 .write(colour.ansi().as_bytes())
@@ -200,29 +235,24 @@ fn regular_format(
                     }
                 }
 
-                if !options.postscript_style {
-                    buffer.write(" ".as_bytes()).expect("Write must succeed.");
-                }
-            }
-
-            if !options.postscript_style {
                 buffer.write(" ".as_bytes()).expect("Write must succeed.");
             }
 
-            if !options.postscript_style {
-                for group in slice.chunks(options.group_size) {
-                    for byte in group {
-                        if is_terminal && !options.postscript_style {
-                            let colour = get_colour(byte);
-                            buffer
-                                .write(colour.ansi().as_bytes())
-                                .expect("Write must succeed.");
-                        }
-                        if !byte.is_ascii_graphic() && *byte != 0x20 {
-                            buffer.write(".".as_bytes()).expect("Write must succeed.");
-                        } else {
-                            buffer.write(&[*byte]).expect("Write must succeed.");
-                        }
+            buffer.write(" ".as_bytes()).expect("Write must succeed.");
+
+            for group in slice.chunks(options.group_size) {
+                for byte in group {
+                    if is_terminal {
+                        let colour = get_colour(byte);
+                        buffer
+                            .write(colour.ansi().as_bytes())
+                            .expect("Write must succeed.");
+                    }
+
+                    if !byte.is_ascii_graphic() && *byte != 0x20 {
+                        buffer.write(".".as_bytes()).expect("Write must succeed.");
+                    } else {
+                        buffer.write(&[*byte]).expect("Write must succeed.");
                     }
                 }
             }
@@ -244,9 +274,7 @@ fn regular_format(
                 .write(Color::Reset.ansi().as_bytes())
                 .expect("Write must succeed.");
 
-            if !options.postscript_style {
-                buffer.write("\n".as_bytes()).expect("Write must succeed.");
-            }
+            buffer.write("\n".as_bytes()).expect("Write must succeed.");
         }
 
         row_counter += 1;
@@ -319,6 +347,11 @@ fn main() {
 
     if options.include_format {
         include_format(inhandle, outhandle, options);
+        return;
+    }
+
+    if options.postscript_style {
+        postscript_format(inhandle, outhandle, options);
         return;
     }
 
