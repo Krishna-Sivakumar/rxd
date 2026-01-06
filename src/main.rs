@@ -114,15 +114,6 @@ fn postscript_format(
 ) -> Result<(), RxdError> {
     let columns = options.cols.unwrap_or(16);
 
-    if options.seek != 0 {
-        if options.seek < 0 {
-            return Err(RxdError::Message("Could not seek to location".into()));
-        }
-        let mut tempbuf: Vec<u8> = Vec::new();
-        tempbuf.resize(options.seek.abs_diff(0) as usize, 0);
-        inhandle.read(&mut tempbuf)?;
-    }
-
     let mut reader = bufio::LimitedBufReader::new(columns * 128 * 16, inhandle, options.len_octets);
     let mut writer = std::io::BufWriter::with_capacity(columns * 128 * 16, outhandle);
 
@@ -161,8 +152,6 @@ fn regular_format(
 
     let columns = options.cols.unwrap_or(if options.include_format {
         12
-    } else if options.postscript_style {
-        30
     } else if options.bits {
         6
     } else {
@@ -170,15 +159,6 @@ fn regular_format(
     });
 
     let mut row_counter: usize = 0;
-
-    if options.seek != 0 {
-        if options.seek < 0 {
-            return Err(RxdError::Message("Sorry, cannot seek.".to_owned()));
-        }
-        let mut tempbuf: Vec<u8> = Vec::new();
-        tempbuf.resize(options.seek.abs_diff(0) as usize, 0);
-        inhandle.read(&mut tempbuf)?;
-    }
 
     let mut reader = bufio::LimitedBufReader::new(columns * 128 * 16, inhandle, options.len_octets);
     let mut buffer = std::io::BufWriter::with_capacity(8192, outhandle);
